@@ -28,7 +28,9 @@ directly over WebRTC.
   and he is out of the play.
 - **Special teams.** Kickoffs and punts with live returns, field goals, extra points and 2-point tries,
   all using a two-press power/accuracy meter.
-- 4 quarters with a game clock, a halftime team perk pick (roguelite boons), sudden-death overtime and rematches.
+- 4 quarters with a running game clock. After a tackle in bounds, up to 25s of runoff ticks away in real time during the huddle, so calling your play fast saves clock.
+- **Timeouts:** 2 per team per half (1 in overtime), called during play selection with **T** or the button. A timeout stops the running clock.
+- A halftime team perk pick (roguelite boons), sudden-death overtime and rematches.
 - **Play anywhere.** Keyboard, mouse, touch (virtual stick plus A/B buttons) and gamepad. Phones work in landscape.
 - Synthesized chiptune sound effects. There are no asset files except the pixel font.
 
@@ -69,7 +71,8 @@ Invite links look like `https://your.site/#join=K7QF2M`.
    with up to 40 frames of redundancy per packet. The opponent's input is predicted. When a real
    input disagrees with the prediction, the sim rewinds and replays. There is a 2-frame local input
    delay, a 14-frame prediction window, and time sync so neither peer drifts ahead. Both peers
-   exchange state hashes every second to detect desyncs (shown in the top-left net readout).
+   exchange state hashes every second.
+4. **Desync recovery.** If the hashes ever disagree, the host is authoritative. It sends its newest fully confirmed state snapshot over the reliable channel. The guest loads it and replays the few frames since then with the inputs it already has, so the game continues without a restart. An epoch counter in the hash packets discards stale comparisons. The top-left readout shows `RESYNC n` if this has happened.
 
 Determinism comes from the simulation code under `src/sim`. It uses only `+ - * /`, `sqrt` and
 integer math (no trig and no `Math.random`) and a seeded RNG stored in the state, so Chrome,
@@ -95,16 +98,18 @@ If you have one, add this before the game script in `index.html`:
 | Give / pitch on options; switch defender | E or Shift | B | B |
 | Pick a card / draft / perk | click, or 1-6 | tap | |
 | Punt / field goal on 4th down | P / F | tap | |
+| Timeout (during play selection) | T | tap TIMEOUT | |
 
 ## Development
 
 ```bash
-npm test                         # determinism, full CPU games, rollback sync under lag/loss
+npm test                         # determinism, full CPU games, rollback sync under lag/loss, desync recovery
 node test/balance.mjs 40         # matchup grid + per-card stats (CPU vs CPU)
 node test/trace.mjs iz c3        # frame-by-frame trace of one play (offense id, defense id)
 node build.mjs && node test/browser.mjs shots         # headless Chrome playthrough with screenshots
 node build.mjs && node test/p2p.mjs shots-p2p 60      # two browsers over the REAL relays
 LAG="lag=60&jitter=30&loss=8" node test/p2p.mjs shots-p2p 60
+CORRUPT=1 node test/p2p.mjs shots-p2p 40    # inject a desync on the guest and watch it recover
 ```
 
 To simulate a bad network in a normal browser, add `?lag=80&jitter=30&loss=5` to the URL.

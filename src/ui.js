@@ -2,7 +2,7 @@
 // clicks only queue menu inputs, which go through the netcode like any other input.
 import { SLOTS, SLOT_POS, POS_LIST, POS_NAME, POS_KEYS, KEY_NAME, PERKS } from './sim/data.js';
 import { OFF_CARDS, DEF_CARDS, CAT_NAME, FORMS, ROUTES, DEF_ALIGN_BASE, ADV } from './sim/plays.js';
-import { DRAFT_T, CALL_T, PAT_T, HALF_T, MENU_PUNT, MENU_FG, fgDistance, fgRange, openSlot } from './sim/game.js';
+import { DRAFT_T, CALL_T, PAT_T, HALF_T, MENU_PUNT, MENU_FG, MENU_TO, fgDistance, fgRange, openSlot } from './sim/game.js';
 import { canThrow, I } from './sim/live.js';
 import { MID } from './sim/core.js';
 
@@ -221,9 +221,12 @@ export class UI {
   // Quarter breaks and the start of the hurry-up minute get a short notice.
   trackClock(st) {
     const g = st.g;
-    if (!g) { this.lastQ = 0; this.lastClock = 0; return; }
+    if (!g) { this.lastQ = 0; this.lastClock = 0; this.lastTO = ''; return; }
+    const toKey = st.call && st.call.tob >= 0 ? `${st.frame - st.t}|${st.call.tob}` : '';
+    if (toKey && toKey !== this.lastTO) this.toast = { text: `TIMEOUT: ${st.teams[st.call.tob].name.toUpperCase()}`, until: this.frame + 150 };
+    this.lastTO = toKey;
     if (this.lastQ && g.q > this.lastQ && g.q !== 3) this.toast = { text: g.q >= 5 ? 'OVERTIME! NEXT SCORE WINS' : `END OF ${QTR[this.lastQ]} QUARTER`, until: this.frame + 170 };
-    else if ((g.q === 2 || g.q >= 4) && g.clock <= 400 && this.lastClock > 400) this.toast = { text: 'FINAL 40 SECONDS: HURRY-UP CLOCK', until: this.frame + 170 };
+    else if ((g.q === 2 || g.q >= 4) && g.clock <= 600 && this.lastClock > 600) this.toast = { text: 'FINAL MINUTE: CALL FAST OR USE A TIMEOUT', until: this.frame + 170 };
     this.lastQ = g.q; this.lastClock = g.clock;
   }
 
@@ -233,12 +236,13 @@ export class UI {
     let clock = g ? g.clock : st.cfg.qlen * 10;
     if (st.ph === 'PLAY' && st.pl && st.pl.ph === 'live' && g) clock -= Math.round(st.pl.t / 6);
     const q = g ? (g.q > 4 ? 'OT' : 'Q' + g.q) : 'PRE';
-    const key = `${st.teams[0].score}|${st.teams[1].score}|${poss}|${Math.ceil(clock / 10)}|${q}`;
+    const key = `${st.teams[0].score}|${st.teams[1].score}|${poss}|${Math.ceil(clock / 10)}|${q}|${g ? g.to.join("") : ""}`;
     if (key !== this.scoreKey) {
       this.scoreKey = key;
       const tm = (i) => {
         const t = st.teams[i];
-        return `<div class="tm" style="background:${t.c1};color:${t.c2}"><span class="${poss === i ? 'poss' : ''}">${esc(t.abbr)}${i === local ? '*' : ''}</span><span class="pts">${t.score}</span></div>`;
+        const tos = g ? `<span class="tos">${'\u25CF'.repeat(g.to[i])}</span>` : '';
+        return `<div class="tm" style="background:${t.c1};color:${t.c2}"><span class="${poss === i ? 'poss' : ''}">${esc(t.abbr)}${i === local ? '*' : ''}${tos}</span><span class="pts">${t.score}</span></div>`;
       };
       this.el.score.innerHTML = `${tm(0)}<div class="clk">${clockText(clock)}<small>${q}</small></div>${tm(1)}`;
     }
@@ -256,7 +260,8 @@ export class UI {
     const silent = sess.silenceMs;
     let t = `PING ${Math.round(sess.rtt)}MS · RB ${sess.rollbacks}`;
     let warn = false;
-    if (sess.desync >= 0) { t = 'DESYNC DETECTED'; warn = true; }
+    if (sess.resyncs) t += ` \u00b7 RESYNC ${sess.resyncs}`;
+    if (sess.desync >= 0) { t = 'DESYNC: RESYNCING...'; warn = true; }
     else if (silent > 4000) { t = 'CONNECTION LOST...'; warn = true; }
     else if (sess.stalled && silent > 300) { t = 'WAITING FOR OPPONENT...'; warn = true; }
     this.el.net.textContent = t;
@@ -348,7 +353,8 @@ export class UI {
     const spec = off ? c.sp : 0;
     const done = picked >= 0 || spec;
     const oppDone = off ? c.pk[1 - local] >= 0 : c.pk[1 - local] >= 0 || c.sp;
-    const key = `call${st.frame - st.t}|${picked}|${spec}|${oppDone}`;
+    const canTO = g.pend > 0 && g.to[local] > 0 && c.tob < 0;
+    const key = `call${st.frame - st.t}|${picked}|${spec}|${oppDone}|${canTO}|${g.to[local]}`;
     const html = () => {
       const cards = hand.map((ci, k) => {
         const cd = lib[ci];
@@ -373,7 +379,8 @@ export class UI {
       const status = done
         ? `<span class="who">LOCKED IN · ${oppDone ? 'SNAPPING...' : 'WAITING FOR OPPONENT'}</span>`
         : `<span class="who">${off ? 'CALL YOUR PLAY' : 'CALL YOUR DEFENSE'} (1-6)</span>`;
-      return `<div class="pbox"><div class="ptitle">${status}<span>${oppDone && !done ? 'OPPONENT READY' : ''}</span><span id="ctime"></span></div>
+      const toBtn = `<button class="mini to" data-menu="${MENU_TO}" ${canTO ? '' : 'disabled'}>TIMEOUT (T) ${'\u25CF'.repeat(g.to[local])}${'\u25CB'.repeat(Math.max(0, 2 - g.to[local]))}</button>`;
+      return `<div class="pbox"><div class="ptitle">${status}<span>${oppDone && !done ? 'OPPONENT READY' : ''}</span><span>${g.pend > 0 ? '<span class="run">CLOCK RUNNING</span> ' : ''}${toBtn} <span id="ctime"></span></span></div>
         <div class="timer"><div id="cbar"></div></div><div class="cards">${cards}</div>${specials}</div>`;
     };
     this.setPanel(key, 'bottom', html());

@@ -49,6 +49,7 @@ export class Input {
       else if (st.ph === 'PLAY') m = 0;
       if ((e.code === 'Enter' || e.code === 'NumpadEnter') && (st.ph === 'PAT' || st.ph === 'OVER')) m = 1;
       if (st.ph === 'DRAFT') m = 0; // draft is mouse/touch driven
+      if (e.code === 'KeyT' && st.ph === 'CALL') m = 9; // timeout
       if (m) this.queueMenu(m);
     });
     window.addEventListener('keyup', (e) => this.keys.delete(e.code));

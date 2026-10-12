@@ -70,9 +70,10 @@ const shotTimer = setInterval(async () => {
   await host.screenshot({ path: `${out}/host-${String(n).padStart(2, '0')}.png` }).catch(() => {});
   await guest.screenshot({ path: `${out}/guest-${String(n).padStart(2, '0')}.png` }).catch(() => {});
 }, Math.max(5000, secs * 1000 / 8));
+if (process.env.CORRUPT) setTimeout(() => guest.evaluate(() => { const s = window.__rg.sess; s.state.teams[1].score += 7; for (const x of s.snaps) if (x) x.teams[1].score += 7; }).then(() => console.log('corrupted guest state')), secs * 400);
 await Promise.all(actors);
 clearInterval(shotTimer);
-const info = async (p) => p.evaluate(() => { const s = window.__rg.sess, st = s.state; return { frame: st.frame, ph: st.ph, score: st.teams.map((t) => t.score), rtt: Math.round(s.rtt), rollbacks: s.rollbacks, rollFrames: s.rollFrames, desync: s.desync, hashes: s.myHashes.size }; });
+const info = async (p) => p.evaluate(() => { const s = window.__rg.sess, st = s.state; return { frame: st.frame, ph: st.ph, score: st.teams.map((t) => t.score), rtt: Math.round(s.rtt), rollbacks: s.rollbacks, rollFrames: s.rollFrames, desync: s.desync, resyncs: s.resyncs, hashes: s.myHashes.size, lastHash: [...s.myHashes.entries()].slice(-3) }; });
 console.log('host ', JSON.stringify(await info(host)));
 console.log('guest', JSON.stringify(await info(guest)));
 const errs = host.errors.concat(guest.errors).filter((e) => !e.includes('favicon'));

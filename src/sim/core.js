@@ -58,11 +58,11 @@ export function hashState(v) {
   const walk = (o) => {
     if (o === null || o === undefined) { mix(7); return; }
     const t = typeof o;
-    if (t === 'number') { hf[0] = o; mix(hu[0]); mix(hu[1]); return; }
+    if (t === 'number') { hf[0] = o === 0 ? 0 : o; mix(hu[0]); mix(hu[1]); return; } // -0 hashes like 0 (JSON-safe)
     if (t === 'boolean') { mix(o ? 3 : 5); return; }
     if (t === 'string') { for (let i = 0; i < o.length; i++) mix(o.charCodeAt(i)); mix(11); return; }
     if (Array.isArray(o)) { mix(o.length); for (let i = 0; i < o.length; i++) walk(o[i]); return; }
-    for (const k in o) { if (k === 'ev') continue; walk(k); walk(o[k]); }
+    for (const k in o) { if (k === 'ev' || o[k] === undefined) continue; walk(k); walk(o[k]); }
   };
   walk(v);
   return h >>> 0;

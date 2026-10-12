@@ -189,7 +189,10 @@ function startGame({ seed, qlen, teams, local, transport, cpu }) {
   document.getElementById('rotate').classList.add('ingame');
   input.enabled = true;
   ui.showTouch(input.isTouch);
-  if (transport) transport.onRel = (msg) => { if (msg && msg.t === 'bye') endGame('OPPONENT LEFT THE GAME'); };
+  if (transport) transport.onRel = (msg) => {
+    if (msg && msg.t === 'bye') endGame('OPPONENT LEFT THE GAME');
+    else sess.handleRel(msg); // desync recovery
+  };
   game.raf = requestAnimationFrame(loop);
 }
 

@@ -89,6 +89,7 @@ const SFX = {
   click: () => tone('square', 1000, 1000, 0.025, 0.15),
   final: () => { [784, 659, 523].forEach((f, i) => tone('square', f, f, 0.25, 0.3, i * 0.22)); },
   quarter: () => tone('square', 440, 440, 0.3, 0.2),
+  timeout: () => { tone('square', 2200, 2200, 0.1, 0.12); tone('square', 2200, 2200, 0.1, 0.12, 0.16); },
 };
 
 export function play(k) {

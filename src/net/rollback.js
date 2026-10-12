@@ -51,6 +51,11 @@ export class RollbackSession {
     this.theirHashes = new Map();
     this.lastHashed = this.f - 1;
     this.desync = -1;
+    this.isHost = localTeam === 0; // the host's state wins when the peers disagree
+    this.epoch = 0;                 // bumps on every resync so stale hashes are ignored
+    this.resyncs = 0;
+    this.lastResyncAt = -1e9;
+    this.wantResync = false;
     this.rollbacks = 0;
     this.rollFrames = 0;
     this.stalled = false;
@@ -95,6 +100,7 @@ export class RollbackSession {
     }
     this.rollTo = -1;
     this.checkHashes();
+    if (this.wantResync) this.sendResync();
 
     // 2. Time sync: if we're running ahead of the peer, occasionally hold a frame.
     const localAdv = this.f - this.estRemoteFrame();
@@ -159,6 +165,7 @@ export class RollbackSession {
       while (this.hasRemote(this.lastConf + 1)) this.lastConf++;
     } else if (type === PKT_HASH) {
       const k = dv.getUint32(1), h = dv.getUint32(5);
+      if (dv.byteLength < 10 || dv.getUint8(9) !== (this.epoch & 255)) return; // from before a resync
       this.theirHashes.set(k, h);
       this.compareHash(k);
     } else if (type === PKT_PING) {
@@ -186,8 +193,8 @@ export class RollbackSession {
         if (!s || s.frame !== k + 1) continue;
         const h = hashState(s);
         this.myHashes.set(k, h);
-        const dv = new DataView(new ArrayBuffer(9));
-        dv.setUint8(0, PKT_HASH); dv.setUint32(1, k); dv.setUint32(5, h);
+        const dv = new DataView(new ArrayBuffer(10));
+        dv.setUint8(0, PKT_HASH); dv.setUint32(1, k); dv.setUint32(5, h); dv.setUint8(9, this.epoch & 255);
         this.tx.sendFast(new Uint8Array(dv.buffer));
         this.compareHash(k);
       }
@@ -199,8 +206,70 @@ export class RollbackSession {
   compareHash(k) {
     const a = this.myHashes.get(k), b = this.theirHashes.get(k);
     if (a === undefined || b === undefined) return;
-    if (a !== b && this.desync < 0) { this.desync = k; console.warn('DESYNC at frame', k, a, b); }
     this.theirHashes.delete(k);
+    if (a !== b && this.desync < 0) {
+      this.desync = k;
+      console.warn('DESYNC at frame', k, a, b, this.isHost ? '- sending resync' : '- requesting resync');
+      if (this.isHost) this.sendResync();
+      else this.requestResync();
+    }
+  }
+
+  // ---- Desync recovery: the host ships its latest final state; the guest replays from it. ----
+
+  requestResync() {
+    const now = performance.now();
+    if (now - this.lastResyncAt < 1000) return;
+    this.lastResyncAt = now;
+    if (this.tx.sendRel) this.tx.sendRel({ t: 'rs-req' });
+  }
+
+  sendResync() {
+    const now = performance.now();
+    if (now - this.lastResyncAt < 500 && !this.wantResync) return;
+    // Newest snapshot whose inputs are all confirmed: identical on both peers if they were in sync.
+    const K = Math.min(this.lastConf, this.f - 2) + 1;
+    const s = this.snaps[K % BUF];
+    if (!s || s.frame !== K) { this.wantResync = true; return; }
+    this.wantResync = false;
+    this.lastResyncAt = now;
+    this.epoch++;
+    this.theirHashes.clear();
+    this.desync = -1;
+    this.resyncs++;
+    if (this.tx.sendRel) this.tx.sendRel({ t: 'rs', epoch: this.epoch, frame: K, state: JSON.stringify(s) });
+  }
+
+  applyResync(K, S, epoch) {
+    if (this.f - K >= BUF - 4) { this.lastResyncAt = -1e9; this.requestResync(); return; } // too old to replay
+    this.epoch = epoch;
+    if (K <= this.f) {
+      this.st = S;
+      for (let k = K; k < this.f; k++) this.simFrame(k);
+    } else {
+      // The host is ahead of us: jump forward (inputs we never sampled count as idle).
+      for (let k = this.f + this.delay; k < K + this.delay; k++) if (this.localSet[k % BUF] !== k) this.setLocal(k, EMPTY);
+      this.st = S;
+      this.f = K;
+    }
+    this.rollTo = -1;
+    for (const k of [...this.myHashes.keys()]) if (k >= K - 1) this.myHashes.delete(k);
+    this.theirHashes.clear();
+    this.lastHashed = Math.min(this.lastHashed, K - 2);
+    this.desync = -1;
+    this.resyncs++;
+  }
+
+  // Reliable lobby-channel messages addressed to the session.
+  handleRel(msg) {
+    if (!msg || typeof msg !== 'object') return;
+    if (msg.t === 'rs-req' && this.isHost) { this.lastResyncAt = -1e9; this.sendResync(); }
+    else if (msg.t === 'rs' && !this.isHost && Number.isInteger(msg.frame) && typeof msg.state === 'string') {
+      let S;
+      try { S = JSON.parse(msg.state); } catch { return; }
+      if (!S || S.frame !== msg.frame) return;
+      this.applyResync(msg.frame, S, msg.epoch | 0);
+    }
   }
 
   takeEvents() { const e = this.events; this.events = []; return e; }
@@ -213,7 +282,7 @@ export class RollbackSession {
 export class LocalSession {
   constructor({ state, localTeam }) {
     this.st = state; this.local = localTeam; this.events = [];
-    this.rtt = 0; this.desync = -1; this.stalled = false; this.rollbacks = 0; this.rollFrames = 0; this.silenceMs = 0;
+    this.rtt = 0; this.desync = -1; this.resyncs = 0; this.stalled = false; this.rollbacks = 0; this.rollFrames = 0; this.silenceMs = 0;
   }
   tick(sample) {
     const inp = sample();
@@ -223,5 +292,6 @@ export class LocalSession {
   }
   takeEvents() { const e = this.events; this.events = []; return e; }
   get state() { return this.st; }
+  handleRel() {}
   destroy() {}
 }

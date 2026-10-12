@@ -67,6 +67,7 @@ input, select { background: #071109; border: 2px solid var(--line); padding: 10p
 #score .tm { display: flex; align-items: center; gap: 6px; padding: 6px 8px; min-width: 86px; justify-content: space-between; }
 #score .tm .pts { font-size: 14px; }
 #score .poss::before { content: '\25B6'; font-size: 7px; color: var(--accent); margin-right: 2px; }
+#score .tos { display: block; font-size: 6px; letter-spacing: 1px; opacity: 0.85; }
 #score .clk { padding: 6px 10px; background: #1a1a1a; text-align: center; min-width: 76px; }
 #score .clk small { display: block; color: var(--dim); font-size: 7px; }
 #down { background: rgba(0,0,0,0.7); padding: 4px 8px; font-size: 8px; color: var(--accent); }
@@ -98,6 +99,9 @@ input, select { background: #071109; border: 2px solid var(--line); padding: 10p
 .ptitle { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
 .ptitle .who { color: var(--accent); }
 .ptitle .who .mini { margin-left: 8px; background: #c2410c; }
+.ptitle .mini.to { background: #7c2d12; }
+.ptitle .run { color: var(--bad); animation: blinkrun 1s steps(2) infinite; }
+@keyframes blinkrun { 50% { opacity: 0.35; } }
 .timer { height: 4px; background: #000; margin: 6px 0 10px; }
 .timer > div { height: 100%; background: var(--accent); transition: width 0.1s linear; }
 .wait { color: var(--dim); text-align: center; padding: 10px; }

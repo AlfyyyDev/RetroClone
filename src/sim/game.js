@@ -10,7 +10,8 @@ export const CALL_T = 15 * FPS;
 export const PAT_T = 8 * FPS;
 export const HALF_T = 14 * FPS;
 export const RESULT_T = 150;
-export const MENU_PUNT = 7, MENU_FG = 8;
+export const MENU_PUNT = 7, MENU_FG = 8, MENU_TO = 9;
+export const TIMEOUTS = 2; // per team, per half (1 in overtime)
 
 const mkStats = () => ({ py: 0, ry: 0, cmp: 0, att: 0, int: 0, sk: 0, fum: 0, td: 0 });
 
@@ -84,7 +85,8 @@ function finishDraft(st) {
     team.ro.CB2 = makePlayer(st, 'CB', 2, false);
   }
   const recv = randInt(st, 2);
-  st.g = { q: 1, clock: st.cfg.qlen * 10, poss: recv, spot: 25, down: 1, togo: 10, recv1: recv, ot: false, tp: false };
+  // pend: runoff still owed to the clock; it ticks away in real time during the huddle.
+  st.g = { q: 1, clock: st.cfg.qlen * 10, poss: recv, spot: 25, down: 1, togo: 10, recv1: recv, ot: false, tp: false, pend: 0, to: [TIMEOUTS, TIMEOUTS] };
   st.ph = 'DRAFT_DONE';
   st.t = 0;
 }
@@ -133,7 +135,7 @@ function startCall(st) {
   const h = [null, null];
   h[off] = dealHand(st, off, true);
   h[def] = dealHand(st, def, false);
-  st.call = { h, pk: [-1, -1], sp: 0, go: 0, cpuT: [40 + randInt(st, 70), 40 + randInt(st, 70)] };
+  st.call = { h, pk: [-1, -1], sp: 0, go: 0, tob: -1, cpuT: [110 + randInt(st, 90), 110 + randInt(st, 90)] };
   st.pl = null;
   st.ph = 'CALL';
   st.t = 0;
@@ -173,8 +175,36 @@ function applyCall(st, ti, ch) {
   st.ev.push({ k: 'select', team: ti });
 }
 
+function callTimeout(st, ti) {
+  const g = st.g, c = st.call;
+  if (g.pend <= 0 || g.to[ti] <= 0 || c.tob >= 0) return;
+  g.to[ti]--;
+  g.pend = 0;
+  c.tob = ti;
+  st.ev.push({ k: 'timeout', team: ti });
+}
+
+function cpuWantsTimeout(st, ti) {
+  const g = st.g;
+  if (g.pend < 40 || g.to[ti] <= 0) return false;
+  const behind = st.teams[ti].score < st.teams[1 - ti].score;
+  return (g.q === 2 && ti === g.poss && g.clock < 700) || (g.q >= 4 && behind && g.clock < 1300);
+}
+
 function stepCall(st, inp, press) {
   const g = st.g, c = st.call, off = g.poss, def = 1 - off;
+  // Running clock: the huddle burns the owed runoff at ~7x speed (25s in ~3.5s). Calling fast saves time.
+  if (g.pend > 0) {
+    const d = Math.min(g.pend, st.t % 5 === 0 ? 2 : 1);
+    g.pend -= d; g.clock -= d;
+    if (g.clock <= 0) {
+      g.clock = 0; g.pend = 0;
+      if (quarterBreak(st)) return; // halftime / game over / overtime
+    }
+  }
+  for (const ti of [off, def]) {
+    if (st.cfg.cpu[ti] ? cpuWantsTimeout(st, ti) : press[ti].menu === MENU_TO) callTimeout(st, ti);
+  }
   for (const ti of [off, def]) {
     const done = c.pk[ti] >= 0 || (ti === off && c.sp);
     if (done) continue;
@@ -187,13 +217,14 @@ function stepCall(st, inp, press) {
   const offDone = c.pk[off] >= 0 || c.sp;
   // Special teams don't need the defense to pick.
   if (c.sp) {
-    if (++c.go > 25) startKick(st, c.sp === MENU_PUNT ? 'PUNT' : 'FG', off, g.spot);
+    if (++c.go > 25) { g.pend = 0; startKick(st, c.sp === MENU_PUNT ? 'PUNT' : 'FG', off, g.spot); }
     return;
   }
   if (offDone && c.pk[def] >= 0 && ++c.go > 25) {
     const oc = c.h[off][c.pk[off]], dc = c.h[def][c.pk[def]];
     st.teams[off].cool[OFF_CARDS[oc].id] = 2;
     st.teams[def].cool[DEF_CARDS[dc].id] = 2;
+    g.pend = 0; // snapping early saves whatever runoff was left
     st.pl = setupScrim(st, off, def, g.spot, oc, dc);
     st.ph = 'PLAY';
     st.t = 0;
@@ -205,6 +236,7 @@ function stepCall(st, inp, press) {
 
 function startKick(st, ty, team, spot) {
   const kx = ty === 'KO' ? spot : spot;
+  if (st.g) st.g.pend = 0;
   st.kick = { ty, tm: team, sg: 0, t: 0, pw: 0, ac: -1, kx, good: false, fl: null, res: '' };
   st.pl = setupScene(st, team, 1 - team, kx, ty === 'PAT' ? 'FG' : ty);
   st.call = null;
@@ -306,6 +338,7 @@ function addScore(st, ti, pts) {
 function setPoss(st, ti, spot) {
   const g = st.g;
   g.poss = ti;
+  g.pend = 0; // change of possession stops the clock
   // The ball is always spotted on a whole yard line.
   g.spot = clamp(Math.round(spot), 1, 99);
   g.down = 1;
@@ -345,10 +378,8 @@ function playResult(st) {
   }
 
   const los = pl.los;
-  // Clock keeps running after a tackle in bounds; teams hurry up in the last 40 seconds of each half.
-  const hurry = (g.q === 2 || g.q >= 4) && g.clock <= 400;
-  const runoff = (o.type === 'tackle' && o.side === 0 && !pl.turn && !g.tp) ? (hurry ? 120 : 250) : 0;
-  g.clock = Math.max(0, g.clock - runoff);
+  // A tackle in bounds keeps the clock running: up to 25s owed, burned during the next huddle.
+  g.pend = (o.type === 'tackle' && o.side === 0 && !pl.turn && !g.tp) ? 250 : 0;
   const yards = Math.round(o.x - los);
   if (!g.tp && o.side === 0 && !pl.turn && (o.type === 'tackle' || o.type === 'oob' || o.type === 'td' || o.type === 'safety')) {
     if (pl.comp) st.stats[off].py += yards; else st.stats[off].ry += yards;
@@ -412,12 +443,12 @@ function quarterBreak(st) {
   if (g.q === 2) { startHalf(st); return true; }
   if (g.q >= 4) {
     if (!tied) { startOver(st); return true; }
-    g.q++; g.ot = true; g.clock = st.cfg.qlen * 10;
+    g.q++; g.ot = true; g.clock = st.cfg.qlen * 10; g.to = [1, 1]; g.pend = 0;
     const kicker = randInt(st, 2);
     startKick(st, 'KO', kicker, 35);
     return true;
   }
-  g.q++; g.clock = st.cfg.qlen * 10;
+  g.q++; g.clock = st.cfg.qlen * 10; g.pend = 0;
   st.ev.push({ k: 'quarter' });
   return false;
 }
@@ -498,7 +529,7 @@ function stepHalf(st, inp, press) {
   }
   if (h.pk[0] >= 0 && h.pk[1] >= 0 && ++h.go > 40) {
     const g = st.g;
-    g.q = 3; g.clock = st.cfg.qlen * 10;
+    g.q = 3; g.clock = st.cfg.qlen * 10; g.to = [TIMEOUTS, TIMEOUTS]; g.pend = 0;
     st.half = null;
     startKick(st, 'KO', g.recv1, 35);
   }
