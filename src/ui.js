@@ -1,7 +1,7 @@
 // DOM overlay UI. Everything is derived from the (deterministic) sim state each frame;
 // clicks only queue menu inputs, which go through the netcode like any other input.
 import { SLOTS, SLOT_POS, POS_LIST, POS_NAME, POS_KEYS, KEY_NAME, PERKS } from './sim/data.js';
-import { OFF_CARDS, DEF_CARDS, CAT_NAME, FORMS, ROUTES, DEF_ALIGN_BASE } from './sim/plays.js';
+import { OFF_CARDS, DEF_CARDS, CAT_NAME, FORMS, ROUTES, DEF_ALIGN_BASE, ADV } from './sim/plays.js';
 import { DRAFT_T, CALL_T, PAT_T, HALF_T, MENU_PUNT, MENU_FG, fgDistance, fgRange, openSlot } from './sim/game.js';
 import { canThrow, I } from './sim/live.js';
 import { MID } from './sim/core.js';
@@ -9,6 +9,26 @@ import { MID } from './sim/core.js';
 export const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const $ = (id) => document.getElementById(id);
 const ORD = ['', '1ST', '2ND', '3RD', '4TH'];
+const QTR = ['', '1ST', '2ND', '3RD', '4TH'];
+// What a card's category beats and loses to (from the shared matchup matrix).
+function matchupLine(cat, off) {
+  let up = '', dn = '';
+  if (off) { for (const d in ADV[cat]) { if (ADV[cat][d] > 0) up = d; if (ADV[cat][d] < 0) dn = d; } }
+  else { for (const o in ADV) { if (ADV[o][cat] < 0) up = o; if (ADV[o][cat] > 0) dn = o; } }
+  return `<div class="cmatch"><span class="up">\u25B2 ${CAT_NAME[up].toUpperCase()}</span><span class="dn">\u25BC ${CAT_NAME[dn].toUpperCase()}</span></div>`;
+}
+// Draft suggestion computed without touching sim state (no RNG).
+const POS_VALUE = { QB: 1.25, RB: 1.05, WR: 1.1, TE: 0.95, OL: 1.02, DL: 1.02, LB: 0.96, CB: 1.0, S: 0.95, K: 0.72 };
+function bestAvailable(d, team) {
+  let best = -1, bs = -1;
+  d.pool.forEach((p, i) => {
+    if (d.taken[i] >= 0 || !openSlot(team, p.pos)) return;
+    const keys = POS_KEYS[p.pos].slice(0, 2);
+    const s = (keys.reduce((a, k) => a + p[k], 0) / keys.length) * POS_VALUE[p.pos];
+    if (s > bs) { bs = s; best = i; }
+  });
+  return best;
+}
 const stars = (n) => '★'.repeat(n) + '☆'.repeat(5 - n);
 const clockText = (tenths) => { const s = Math.max(0, Math.ceil(tenths / 10)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
 
@@ -179,6 +199,7 @@ export class UI {
       default: this.setPanel('', '', '');
     }
     this.kickMeter(st, local);
+    this.trackClock(st);
     if (st.ph === 'RESULT' && st.res) {
       const r = st.res;
       let reveal = '';
@@ -191,8 +212,19 @@ export class UI {
     } else if (st.ph === 'DRAFT_DONE') {
       const rt = st.teams[st.g.recv1];
       this.setBanner('dd', 'big', `<div class="t">DRAFT COMPLETE</div><div class="s">${esc(rt.name)} ${st.g.recv1 === local ? '(YOU)' : ''} RECEIVE THE KICKOFF</div>`);
+    } else if (this.toast && this.frame < this.toast.until) {
+      this.setBanner('toast' + this.toast.text, 'toast', `<div class="t">${this.toast.text}</div>`);
     } else this.setBanner('', '', '');
     this.setHint(this.hintFor(st, local, touch));
+  }
+
+  // Quarter breaks and the start of the hurry-up minute get a short notice.
+  trackClock(st) {
+    const g = st.g;
+    if (!g) { this.lastQ = 0; this.lastClock = 0; return; }
+    if (this.lastQ && g.q > this.lastQ && g.q !== 3) this.toast = { text: g.q >= 5 ? 'OVERTIME! NEXT SCORE WINS' : `END OF ${QTR[this.lastQ]} QUARTER`, until: this.frame + 170 };
+    else if ((g.q === 2 || g.q >= 4) && g.clock <= 400 && this.lastClock > 400) this.toast = { text: 'FINAL 40 SECONDS: HURRY-UP CLOCK', until: this.frame + 170 };
+    this.lastQ = g.q; this.lastClock = g.clock;
   }
 
   updateScore(st, local) {
@@ -285,7 +317,7 @@ export class UI {
       }).join('');
       const roster = (t, cls) => `<div class="roster ${cls}"><h4><span class="tdot" style="background:${t.c1}"></span>${esc(t.abbr)}</h4>${SLOTS.map((s) => `<div class="slot"><span>${s}</span>${t.ro[s] ? `<span>${esc(t.ro[s].n)} ${stars(t.ro[s].st).slice(0, t.ro[s].st)}</span>` : '<span class="empty">---</span>'}</div>`).join('')}</div>`;
       return `<div class="pbox" style="display:flex;flex-direction:column;min-height:0;flex:1">
-        <div class="ptitle"><span>DRAFT · PICK ${d.i + 1}/${d.order.length}</span><span class="who">${mine ? 'YOUR PICK!' : `${esc(st.teams[turn].name)} PICKING...`}</span><span id="dtime"></span></div>
+        <div class="ptitle"><span>DRAFT · PICK ${d.i + 1}/${d.order.length}</span><span class="who">${mine ? `YOUR PICK! <button class="mini" data-menu="${bestAvailable(d, me) + 1}">AUTO PICK</button>` : `${esc(st.teams[turn].name)} PICKING...`}</span><span id="dtime"></span></div>
         <div class="timer"><div id="dbar"></div></div>
         <div class="draft">${roster(me, 'mine')}<div class="board">${groups}</div>${roster(them, '')}</div>
       </div>`;
@@ -326,6 +358,7 @@ export class UI {
           <div class="cname">${esc(cd.name)}</div>
           <img alt="" src="${diagram(cd, off)}">
           <div class="cdesc">${esc(cd.desc)}</div>
+          ${matchupLine(cd.cat, off)}
         </button>`;
       }).join('');
       let specials = '';

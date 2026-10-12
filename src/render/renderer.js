@@ -103,7 +103,7 @@ export class Renderer {
     const sx0 = Math.round((this.camX - FX0) * SX - W / 2);
     ctx.drawImage(this.field, sx0, 0, W, H, 0, 0, W, H);
 
-    const offT = st.pl ? st.pl.off : st.kick ? st.kick.tm : st.g ? st.g.poss : 0;
+    const offT = st.pl ? st.pl.off : st.kick ? st.kick.tm : st.pat ? st.pat.team : st.g ? st.g.poss : 0;
     this.drawEndZones(st, offT);
 
     if (st.g && (st.ph === 'CALL' || (st.ph === 'PLAY' && st.pl && st.pl.k === 'scrim') || st.ph === 'PAT')) {
@@ -169,7 +169,7 @@ export class Renderer {
       ctx.fillRect(x - 3, y - 1, 7, 2);
     }
     const b = pl.b;
-    if (b.st !== 'held' && b.st !== 'gone') {
+    if ((b.st !== 'held' || b.h < 0) && b.st !== 'gone') {
       const [bx, by] = this.toScreen(b.x, b.y);
       ctx.fillRect(bx - 1, by - 1, 3, 1);
     }
@@ -200,6 +200,7 @@ export class Renderer {
       }
       if (b.st === 'held' && b.h === i) this.drawBall(p.x + p.fx * 0.35, p.y, 0.9);
     }
+    if (b.st === 'held' && b.h < 0) this.drawBall(b.x, b.y, 0.2); // on the ground before the snap
     if (b.st !== 'held' && b.st !== 'dead' && b.st !== 'gone') this.drawBall(b.x, b.y, b.z);
     if (b.st === 'dead' && pl.car < 0) this.drawBall(b.x, b.y, 0.2);
 

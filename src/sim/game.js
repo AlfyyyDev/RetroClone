@@ -306,7 +306,8 @@ function addScore(st, ti, pts) {
 function setPoss(st, ti, spot) {
   const g = st.g;
   g.poss = ti;
-  g.spot = clamp(spot, 1, 99);
+  // The ball is always spotted on a whole yard line.
+  g.spot = clamp(Math.round(spot), 1, 99);
   g.down = 1;
   g.togo = Math.min(10, 100 - g.spot);
 }
@@ -332,26 +333,27 @@ function playResult(st) {
   const pl = st.pl, g = st.g, o = pl.out;
   const off = pl.off, def = pl.def;
   const scoreTeam = (side) => (side === 0 ? off : def);
-  g.clock -= Math.round(pl.t / 6);
+  if (!g.tp) g.clock = Math.max(0, g.clock - Math.round(pl.t / 6));
   if (pl.k === 'ret') {
     const tag = pl.punt ? 'PUNT' : 'KICK';
     if (o.type === 'td') { addScore(st, def, 6); return showResult(st, 'RETURN TOUCHDOWN!', `${tag} RETURN`, 'big', { t: 'pat', team: def }); }
     if (o.type === 'tb') { setPoss(st, def, pl.punt ? 20 : 25); return showResult(st, 'TOUCHBACK', '', 'neutral', { t: 'call' }); }
     if (o.side === 0) { setPoss(st, off, o.x); return showResult(st, 'FUMBLE!', 'KICKING TEAM RECOVERS', 'bad', { t: 'call' }); }
-    const ret = Math.round(pl.e[8].x >= 0 ? (Math.min(pl.b.tx, 100) - o.x) : 0);
+    const ret = Math.round(Math.min(pl.b.tx, 100) - o.x);
     setPoss(st, def, 100 - o.x);
     return showResult(st, `${tag} RETURN`, ret > 0 ? `${ret} YARDS` : '', 'neutral', { t: 'call' });
   }
 
   const los = pl.los;
-  const runoff = (o.type === 'tackle' && o.side === 0 && !pl.turn) ? 250 : 0;
-  g.clock -= runoff;
-  if (g.clock < 0) g.clock = 0;
+  // Clock keeps running after a tackle in bounds; teams hurry up in the last 40 seconds of each half.
+  const hurry = (g.q === 2 || g.q >= 4) && g.clock <= 400;
+  const runoff = (o.type === 'tackle' && o.side === 0 && !pl.turn && !g.tp) ? (hurry ? 120 : 250) : 0;
+  g.clock = Math.max(0, g.clock - runoff);
   const yards = Math.round(o.x - los);
-  if (o.side === 0 && !pl.turn && (o.type === 'tackle' || o.type === 'oob' || o.type === 'td' || o.type === 'safety')) {
+  if (!g.tp && o.side === 0 && !pl.turn && (o.type === 'tackle' || o.type === 'oob' || o.type === 'td' || o.type === 'safety')) {
     if (pl.comp) st.stats[off].py += yards; else st.stats[off].ry += yards;
   }
-  if (pl.sack) st.stats[def].sk++;
+  if (pl.sack && !g.tp) st.stats[def].sk++;
 
   if (g.tp) {
     g.tp = false;
@@ -388,9 +390,9 @@ function playResult(st) {
     return showResult(st, pl.turn ? 'INTERCEPTED!' : 'FUMBLE!', 'TURNOVER', 'bad', { t: 'call' });
   }
   if (pl.turn) { setPoss(st, off, o.x); return showResult(st, 'FUMBLE!', 'OFFENSE RECOVERS', 'good', { t: 'call' }); }
-  const ns = clamp(o.x, 1, 99);
+  const ns = clamp(Math.round(o.x), 1, 99);
   const title = pl.sack ? 'SACKED!' : yardText(yards);
-  if (ns >= g.spot + g.togo - 1e-9) {
+  if (ns >= g.spot + g.togo) {
     g.spot = ns; g.down = 1; g.togo = Math.min(10, 100 - ns);
     st.ev.push({ k: 'first' });
     return showResult(st, title, 'FIRST DOWN!', 'good', { t: 'call' });

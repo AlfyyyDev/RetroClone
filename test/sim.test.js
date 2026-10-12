@@ -12,7 +12,11 @@ function runCpuGame(seed, maxFrames = 60 * 60 * 40) {
   const st = createGame({ seed, qlen: 120, cpu: [true, true], teams: TEAMS });
   const phases = new Set();
   let f = 0;
-  while (st.ph !== 'OVER' && f < maxFrames) { step(st, [null, null]); phases.add(st.ph); f++; }
+  while (st.ph !== 'OVER' && f < maxFrames) {
+    step(st, [null, null]); phases.add(st.ph); f++;
+    if (st.g && !(Number.isInteger(st.g.spot) && Number.isInteger(st.g.togo))) throw new Error(`non-integer spot ${st.g.spot} / togo ${st.g.togo} in ${st.ph}`);
+    if (st.g && st.g.clock < 0) throw new Error('negative clock');
+  }
   return { st, f, phases };
 }
 
