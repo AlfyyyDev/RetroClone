@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+  <meta name="theme-color" content="#0b1a10">
+  <meta name="description" content="Peer-to-peer retro pixel football. Draft a team, play your cards, beat your friend.">
+  <title>Retro Gridiron</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%231d5e2c'/%3E%3Cellipse cx='8' cy='8' rx='6' ry='3.6' fill='%237c3f12'/%3E%3Crect x='5' y='7.5' width='6' height='1' fill='%23fff'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div id="app">
+    <canvas id="field" aria-label="Football field"></canvas>
+
+    <div id="hud" class="hidden">
+      <div id="score"></div>
+      <div id="down"></div>
+    </div>
+    <div id="panel" class="hidden"></div>
+    <div id="banner" class="hidden"></div>
+    <div id="kickmeter" class="hidden">
+      <div class="km-label" id="km-label">POWER</div>
+      <div class="km-bar"><div id="km-power"></div><div id="km-target"></div></div>
+      <div class="km-acc"><div class="km-zone" id="km-zone"></div><div id="km-needle"></div></div>
+      <div class="km-tip" id="km-tip">SPACE / CLICK / TAP</div>
+    </div>
+    <div id="hint" class="hidden"></div>
+    <div id="net" class="hidden"></div>
+    <div id="touch" class="hidden">
+      <div id="stick-base"><div id="stick-knob"></div></div>
+      <button id="btnB" class="tbtn" aria-label="B button">B</button>
+      <button id="btnA" class="tbtn" aria-label="A button">A</button>
+    </div>
+    <div id="topbtns" class="hidden">
+      <button id="btn-mute" class="mini" title="Toggle sound">SND</button>
+      <button id="btn-leave" class="mini" title="Leave game">EXIT</button>
+    </div>
+    <div id="rotate" class="hidden">ROTATE YOUR DEVICE<br><small>landscape plays best</small></div>
+
+    <section id="screen-menu" class="screen">
+      <div class="box">
+        <h1 class="logo">RETRO<br>GRIDIRON</h1>
+        <p class="tag">P2P PIXEL FOOTBALL &middot; DRAFT &middot; PICK 6 PLAYBOOK</p>
+        <div class="team-edit">
+          <label>TEAM NAME <input id="in-name" maxlength="16" autocomplete="off"></label>
+          <label>ABBR <input id="in-abbr" maxlength="3" autocomplete="off" class="abbr"></label>
+          <div class="swatches" id="swatches" role="radiogroup" aria-label="Team colors"></div>
+        </div>
+        <div class="row">
+          <button id="btn-create" class="big">CREATE LOBBY</button>
+        </div>
+        <div class="row join">
+          <input id="in-code" maxlength="6" placeholder="CODE" autocomplete="off" aria-label="Lobby code">
+          <button id="btn-join" class="big alt">JOIN</button>
+        </div>
+        <div class="row">
+          <button id="btn-cpu" class="alt">PRACTICE VS CPU</button>
+          <select id="in-qlen" aria-label="Quarter length">
+            <option value="120">2 MIN QTRS</option>
+            <option value="180" selected>3 MIN QTRS</option>
+            <option value="240">4 MIN QTRS</option>
+          </select>
+        </div>
+        <details class="how">
+          <summary>HOW TO PLAY</summary>
+          <ul>
+            <li><b>Draft</b> 11 players in a snake draft against your opponent.</li>
+            <li>Every down you're dealt <b>6 play cards</b>: always a Run, Pass, Play-Action and Option (defense: Run Stop, Blitz, Zone, Man) plus 2 wildcards. Used plays cool down.</li>
+            <li>Each call beats one style and loses to another. The edge is revealed after the snap.</li>
+            <li><b>Offense:</b> WASD / arrows / stick to move. Drag on the field and release to throw, or press 1-4 for a quick throw. SPACE = juke, E = give/pitch on options.</li>
+            <li><b>Defense:</b> you control one defender (yellow arrow). E = switch to the defender nearest the ball. SPACE = dive / rip off a block.</li>
+            <li><b>Kicks:</b> SPACE/tap once for power, again for accuracy.</li>
+            <li>Halftime: pick a team perk. Overtime is sudden death.</li>
+          </ul>
+        </details>
+      </div>
+    </section>
+
+    <section id="screen-lobby" class="screen hidden">
+      <div class="box">
+        <h2 id="lobby-title">LOBBY</h2>
+        <div id="lobby-code" class="code"></div>
+        <div class="row" id="lobby-share">
+          <button id="btn-copy-code" class="alt">COPY CODE</button>
+          <button id="btn-copy-link" class="alt">COPY INVITE LINK</button>
+        </div>
+        <p id="lobby-status" class="status">...</p>
+        <div id="lobby-teams" class="teams"></div>
+        <div class="row">
+          <button id="btn-start" class="big hidden">START GAME</button>
+          <button id="btn-cancel" class="alt">LEAVE</button>
+        </div>
+        <p class="fine">Signaling uses public Nostr relays &amp; WebTorrent trackers only to introduce the two browsers. Gameplay is direct peer-to-peer.</p>
+      </div>
+    </section>
+  </div>
+  <script type="module" src="game.js"></script>
+</body>
+</html>

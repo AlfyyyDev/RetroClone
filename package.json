@@ -1,0 +1,23 @@
+{
+  "name": "retro-gridiron",
+  "version": "1.0.0",
+  "description": "Peer-to-peer retro football with a draft and roguelite play cards",
+  "scripts": {
+    "dev": "node build.mjs --serve",
+    "build": "node build.mjs",
+    "test": "node --test test/*.test.js"
+  },
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "esbuild": "0.25.10",
+    "playwright-core": "1.59.1"
+  },
+  "dependencies": {
+    "@fontsource/press-start-2p": "5.1.0",
+    "@trystero-p2p/nostr": "0.25.4",
+    "@trystero-p2p/torrent": "0.25.4"
+  },
+  "type": "module",
+  "private": true
+}
