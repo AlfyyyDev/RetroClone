@@ -47,7 +47,7 @@ export class Input {
       let m = KEY_MENU[e.code] || 0;
       if (st.ph === 'PLAY' && m >= 1 && m <= 4) m += 20; // quick throw to receiver 1-4
       else if (st.ph === 'PLAY') m = 0;
-      if ((e.code === 'Enter' || e.code === 'NumpadEnter') && (st.ph === 'PAT' || st.ph === 'OVER')) m = 1;
+      if ((e.code === 'Enter' || e.code === 'NumpadEnter') && (st.ph === 'PAT' || st.ph === 'OVER' || st.ph === 'RESULT')) m = 1;
       if (st.ph === 'DRAFT') m = 0; // draft is mouse/touch driven
       if (e.code === 'KeyT' && st.ph === 'CALL') m = 9; // timeout
       if (m) this.queueMenu(m);

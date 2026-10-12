@@ -92,6 +92,21 @@ const SFX = {
   timeout: () => { tone('square', 2200, 2200, 0.1, 0.12); tone('square', 2200, 2200, 0.1, 0.12, 0.16); },
 };
 
+// Quiet crowd murmur under the whole game.
+let amb = null;
+export function ambience(on) {
+  if (!ac) { if (on) setTimeout(() => ambience(true), 500); return; }
+  if (on && !amb) {
+    const s = ac.createBufferSource(), f = ac.createBiquadFilter(), g = ac.createGain();
+    s.buffer = noiseBuf; s.loop = true;
+    f.type = 'bandpass'; f.frequency.value = 700; f.Q.value = 0.4;
+    g.gain.value = 0.035;
+    s.connect(f); f.connect(g); g.connect(master);
+    s.start();
+    amb = { s, g };
+  } else if (!on && amb) { try { amb.s.stop(); } catch {} amb = null; }
+}
+
 export function play(k) {
   if (!ac || muted) return;
   const fn = SFX[k];

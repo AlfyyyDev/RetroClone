@@ -212,7 +212,7 @@ function setDead(st, pl, type, side, x) {
   pl.deadT = 0;
   pl.out = { type, side, x };
   pl.b.st = 'dead';
-  st.ev.push({ k: type === 'td' ? 'td' : type === 'inc' ? 'inc' : 'whistle' });
+  st.ev.push({ k: type === 'td' ? 'td' : type === 'inc' ? 'inc' : 'whistle', x: pl.b.x, y: pl.b.y, tm: side === 0 ? pl.off : pl.def });
 }
 
 function giveBall(st, pl, i, kind) {
@@ -221,7 +221,7 @@ function giveBall(st, pl, i, kind) {
   pl.car = i;
   const p = pl.e[i];
   if (pl.ctrl[p.s] !== i) { pl.ctrl[p.s] = i; pl.touch[p.s] = false; }
-  if (kind) st.ev.push({ k: kind });
+  if (kind) st.ev.push({ k: kind, x: p.x, y: p.y });
 }
 
 function launch(pl, kind, sx, sy, tx, ty, F, pk, to) {
@@ -713,7 +713,7 @@ function humanControl(st, pl, s, inp, pressA, pressB) {
   }
   if (pressA) {
     if (pl.car === ci) {
-      if (p.jcd === 0) { p.jk = p.jkB ? 24 : 18; p.jcd = p.jkB ? 55 : 75; st.ev.push({ k: 'juke' }); }
+      if (p.jcd === 0) { p.jk = p.jkB ? 24 : 18; p.jcd = p.jkB ? 55 : 75; st.ev.push({ k: 'juke', x: p.x, y: p.y }); }
     } else if (p.st === 1) {
       if (p.rcd === 0) { p.rcd = 40; if (rand(st) < 0.3 + (p.str - e[p.eng].str) * 0.006) shed(pl, p, e[p.eng]); }
     } else if (p.st === 0 && pl.car >= 0 && e[pl.car].s !== s) {
@@ -722,7 +722,7 @@ function humanControl(st, pl, s, inp, pressA, pressB) {
       if (len(ux, uy) < 0.2) { ux = c.x - p.x; uy = c.y - p.y; }
       const l = len(ux, uy) || 1;
       p.st = 4; p.stT = 16; p.vx = (ux / l) * p.spd * 1.35; p.vy = (uy / l) * p.spd * 1.35;
-      st.ev.push({ k: 'dive' });
+      st.ev.push({ k: 'dive', x: p.x, y: p.y });
     }
   }
   if (pressB) {
@@ -868,13 +868,13 @@ function tackles(st, pl) {
       // Fumble: rare, more likely from hard hitters on smaller carriers.
       const fum = 0.012 * (d.str / Math.max(c.str, 40)) * (d.ff ? 2.5 : 1);
       if (rand(st) < fum) {
-        st.ev.push({ k: 'fumble' });
+        st.ev.push({ k: 'fumble', x: c.x, y: c.y });
         setDead(st, pl, 'tackle', d.s, c.x);
         pl.out.fum = true;
         return;
       }
       if (pl.k === 'scrim' && pl.car === I.QB && !pl.pm && c.x < pl.los) pl.sack = true;
-      st.ev.push({ k: len(d.vx - c.vx, d.vy - c.vy) > 9 ? 'bigtackle' : 'tackle' });
+      st.ev.push({ k: len(d.vx - c.vx, d.vy - c.vy) > 9 ? 'bigtackle' : 'tackle', x: c.x, y: c.y, sack: pl.sack });
       c.st = 2; c.stT = 60;
       const fwd = c.s === 0 ? 0.5 : -0.5;
       deadSpot(st, pl, c, c.x + (c.vx * (c.s === 0 ? 1 : -1) > 2 ? fwd : 0));
@@ -883,7 +883,7 @@ function tackles(st, pl) {
     d.tcd = 18;
     if (d.st === 4) { d.st = 2; d.stT = 34; } else { d.st = 3; d.stT = 10; }
     c.slow = 10;
-    st.ev.push({ k: 'broken' });
+    st.ev.push({ k: 'broken', x: c.x, y: c.y });
   }
 }
 
@@ -939,7 +939,7 @@ function resolveCatch(st, pl) {
     const human = pl.ctrl[1] === di && pl.touch[1] ? 1.25 : 1;
     const pInt = (0.12 + (def.hnd - 40) * 0.005) * (1 - (dd / 1.15) * 0.45) * human;
     if (inb && rand(st) < pInt) {
-      st.ev.push({ k: 'int' });
+      st.ev.push({ k: 'int', x: def.x, y: def.y });
       st.stats[pl.off].int++;
       pl.turn = true;
       giveBall(st, pl, di);
@@ -949,7 +949,7 @@ function resolveCatch(st, pl) {
       startPursuit(pl); pl.pmT = pl.t;
       return;
     }
-    st.ev.push({ k: 'pbu' });
+    st.ev.push({ k: 'pbu', x: b.x, y: b.y });
     setDead(st, pl, 'inc', 0, pl.los);
     return;
   }
@@ -967,7 +967,7 @@ function resolveCatch(st, pl) {
       if (r.x >= 100) setDead(st, pl, 'td', 0, r.x);
       return;
     }
-    st.ev.push({ k: 'drop' });
+    st.ev.push({ k: 'drop', x: r.x, y: r.y });
   }
   setDead(st, pl, 'inc', 0, pl.los);
 }

@@ -5,9 +5,10 @@ import { connect, makeCode, normalizeCode } from './net/lobby.js';
 import { Renderer } from './render/renderer.js';
 import { Input } from './input.js';
 import { UI, esc } from './ui.js';
-import { unlockAudio, play, toggleMute, isMuted } from './audio.js';
+import { unlockAudio, play, toggleMute, isMuted, ambience } from './audio.js';
 
-const VERSION = 1;
+const VERSION = 2;
+const HAPTIC = { tackle: 12, bigtackle: 35, fumble: 40, int: 50, td: [40, 50, 90], broken: 8 };
 const STEP = 1000 / 60;
 const $ = (id) => document.getElementById(id);
 
@@ -189,6 +190,7 @@ function startGame({ seed, qlen, teams, local, transport, cpu }) {
   document.getElementById('rotate').classList.add('ingame');
   input.enabled = true;
   ui.showTouch(input.isTouch);
+  ambience(true);
   if (transport) transport.onRel = (msg) => {
     if (msg && msg.t === 'bye') endGame('OPPONENT LEFT THE GAME');
     else sess.handleRel(msg); // desync recovery
@@ -211,8 +213,15 @@ function loop(now) {
     n++;
   }
   if (n >= 6) g.acc = 0;
-  for (const e of g.sess.takeEvents()) play(e.k);
   const st = g.sess.state;
+  for (const e of g.sess.takeEvents()) {
+    play(e.k);
+    renderer.event(e, st);
+    if (input.isTouch && navigator.vibrate) {
+      const v = HAPTIC[e.k];
+      if (v) try { navigator.vibrate(v); } catch {}
+    }
+  }
   renderer.draw(st, { local: g.local, aim: input.aim, showLabels: !input.isTouch });
   ui.update(st, g.local, g.transport ? g.sess : null);
   if (g.transport && g.sess.silenceMs > 12000) { endGame('CONNECTION LOST'); return; }
@@ -225,6 +234,7 @@ function stopGame() {
   game.sess.destroy();
   game = null;
   input.enabled = false;
+  ambience(false);
   ui.hideAll();
   document.getElementById('rotate').classList.remove('ingame');
   requestAnimationFrame(idle);

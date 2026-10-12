@@ -18,6 +18,11 @@ export class Renderer {
     this.camTarget = 50;
     this.field = this.buildField();
     this.blink = 0;
+    this.shake = 0; this.shakeMag = 0;
+    this.parts = [];   // world-space particles (dust, confetti)
+    this.texts = [];   // floating callouts
+    this.trail = [];   // recent ball positions while in flight
+    this.lastT = performance.now();
     this.resize();
   }
 
@@ -84,6 +89,8 @@ export class Renderer {
     if (st.ph === 'PLAY' && pl) {
       const b = pl.b;
       t = b.x + (pl.ph === 'pre' ? 10 : pl.k === 'ret' ? 0 : 6);
+      // Look ahead of a ball carrier in the open field.
+      if (pl.car >= 0 && (pl.pm || pl.k === 'ret')) { const c = pl.e[pl.car]; t = c.x + c.vx * 0.6 + (c.s === 0 ? 5 : -5); }
     } else if (st.ph === 'KICK' && st.kick) {
       const k = st.kick;
       t = k.fl ? k.fl.sx + (k.fl.tx - k.fl.sx) * Math.min(1, k.fl.f / k.fl.F) : k.ty === 'KO' ? k.kx + 10 : k.kx + 4;
@@ -97,8 +104,21 @@ export class Renderer {
 
   draw(st, view) {
     const ctx = this.ctx, W = this.W;
+    const now = performance.now();
+    const dt = Math.min(0.05, (now - this.lastT) / 1000);
+    this.lastT = now;
     this.blink++;
     this.updateCamera(st);
+    // Screen shake after big hits.
+    let ox = 0, oy = 0;
+    if (this.shake > 0) {
+      this.shake -= dt;
+      const m = this.shakeMag * Math.min(1, this.shake * 8);
+      ox = Math.round((Math.random() * 2 - 1) * m); oy = Math.round((Math.random() * 2 - 1) * m);
+    }
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.fillStyle = '#163f22'; ctx.fillRect(0, 0, W, H);
+    ctx.setTransform(1, 0, 0, 1, ox, oy);
     // Field.
     const sx0 = Math.round((this.camX - FX0) * SX - W / 2);
     ctx.drawImage(this.field, sx0, 0, W, H, 0, 0, W, H);
@@ -116,6 +136,72 @@ export class Renderer {
 
     if (st.pl) this.drawPlay(st, view);
     if (st.ph === 'KICK' && st.kick && st.kick.fl) this.drawFGBall(st.kick.fl);
+    this.drawFx(dt);
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+  }
+
+  // ---- Juice: called once per newly simulated sim event. ----
+  event(e, st) {
+    const has = e.x !== undefined;
+    const hit = (mag, sec) => { if (mag >= this.shakeMag || this.shake <= 0) { this.shakeMag = mag; this.shake = sec; } };
+    switch (e.k) {
+      case 'tackle': this.dust(e.x, e.y, 7); hit(1.5, 0.12); if (e.sack) this.say(e.x, e.y, 'SACK!', '#f87171'); break;
+      case 'bigtackle': this.dust(e.x, e.y, 14); hit(3, 0.25); this.say(e.x, e.y, e.sack ? 'SACK!' : 'BOOM!', '#f87171'); break;
+      case 'broken': this.dust(e.x, e.y, 4); this.say(e.x, e.y, 'BROKEN TACKLE!', '#fde047'); break;
+      case 'juke': this.say(e.x, e.y, 'JUKE!', '#fde047'); break;
+      case 'int': this.say(e.x, e.y, 'PICKED!', '#f87171'); hit(2, 0.2); break;
+      case 'pbu': this.dust(e.x, e.y, 4); this.say(e.x, e.y, 'SWATTED!', '#93c5fd'); break;
+      case 'drop': this.say(e.x, e.y, 'DROPPED!', '#cbd5e1'); break;
+      case 'fumble': this.dust(e.x, e.y, 10); this.say(e.x, e.y, 'FUMBLE!', '#f87171'); hit(3, 0.25); break;
+      case 'dive': if (has) this.dust(e.x, e.y, 3); break;
+      case 'td': if (has) { const t = st.teams[e.tm]; this.confetti(e.x, e.y, t ? [t.c1, t.c2, '#fde047'] : ['#fde047']); hit(2, 0.3); } break;
+    }
+  }
+
+  dust(x, y, n) {
+    for (let i = 0; i < n; i++) {
+      const a = Math.random() * 6.283, s = 1.5 + Math.random() * 3;
+      this.parts.push({ x, y, z: 0.2, vx: Math.cos(a) * s, vy: Math.sin(a) * s * 0.6, vz: 2 + Math.random() * 3, g: 14, life: 0.45 + Math.random() * 0.3, col: Math.random() < 0.5 ? '#b9a27a' : '#5f8f4a' });
+    }
+  }
+
+  confetti(x, y, cols) {
+    for (let i = 0; i < 70; i++) {
+      const a = Math.random() * 6.283, s = 2 + Math.random() * 7;
+      this.parts.push({ x, y, z: 1, vx: Math.cos(a) * s, vy: Math.sin(a) * s * 0.6, vz: 6 + Math.random() * 8, g: 9, life: 1.4 + Math.random() * 1.2, col: cols[i % cols.length], drift: 1 });
+    }
+  }
+
+  say(x, y, text, col) {
+    if (this.texts.length > 3) this.texts.shift();
+    this.texts.push({ x, y, text, col, life: 1.0 });
+  }
+
+  drawFx(dt) {
+    const c = this.ctx;
+    for (let i = this.parts.length - 1; i >= 0; i--) {
+      const p = this.parts[i];
+      p.life -= dt;
+      if (p.life <= 0) { this.parts.splice(i, 1); continue; }
+      p.x += p.vx * dt; p.y += p.vy * dt; p.z += p.vz * dt; p.vz -= p.g * dt;
+      if (p.z < 0) { p.z = 0; p.vz *= -0.3; p.vx *= 0.6; p.vy *= 0.6; }
+      if (p.drift) { p.vx *= 0.985; p.vy *= 0.985; if (p.vz < -1.5) p.vz = -1.5; }
+      const [sx, sy] = this.toScreen(p.x, p.y);
+      c.fillStyle = p.col;
+      c.fillRect(sx, sy - Math.round(p.z * SY * 1.6), p.drift ? 2 : 1, 1);
+    }
+    for (let i = this.texts.length - 1; i >= 0; i--) {
+      const t = this.texts[i];
+      t.life -= dt;
+      if (t.life <= 0) { this.texts.splice(i, 1); continue; }
+      const [sx, sy] = this.toScreen(t.x, t.y);
+      const rise = Math.round((1 - t.life) * 14);
+      const w = textWidth(t.text);
+      const x = Math.max(2, Math.min(this.W - w - 2, Math.round(sx - w / 2))), y = Math.max(TOP + 8, sy - SH - 14 - rise);
+      if (t.life < 0.25 && (this.blink & 2)) continue;
+      drawText(c, t.text, x + 1, y + 1, 'rgba(0,0,0,0.7)');
+      drawText(c, t.text, x, y, t.col);
+    }
   }
 
   vline(x, col) {
@@ -175,6 +261,13 @@ export class Renderer {
     }
     const localSide = pl.off === local ? 0 : pl.def === local ? 1 : -1;
     const ctrl = localSide >= 0 ? pl.ctrl[localSide] : -1;
+    // Ring under the player you control.
+    if (ctrl >= 0 && pl.ph !== 'dead' && pl.ph !== 'scene' && e[ctrl]) {
+      const [x, y] = this.toScreen(e[ctrl].x, e[ctrl].y);
+      ctx.fillStyle = 'rgba(253,224,71,0.85)';
+      ctx.fillRect(x - 3, y - 2, 7, 1); ctx.fillRect(x - 3, y + 1, 7, 1); ctx.fillRect(x - 5, y - 1, 2, 2); ctx.fillRect(x + 4, y - 1, 2, 2);
+    }
+    const throwing = localSide === 0 && pl.k === 'scrim' && pl.ph === 'live' && canThrow(pl);
     for (const i of order) {
       const p = e[i];
       const [x, y] = this.toScreen(p.x, p.y);
@@ -201,11 +294,21 @@ export class Renderer {
       if (b.st === 'held' && b.h === i) this.drawBall(p.x + p.fx * 0.35, p.y, 0.9);
     }
     if (b.st === 'held' && b.h < 0) this.drawBall(b.x, b.y, 0.2); // on the ground before the snap
+    // Fading trail behind a ball in flight.
+    if (b.st === 'air' || b.st === 'kick' || b.st === 'pitch') {
+      const [tx, ty] = this.toScreen(b.x, b.y);
+      this.trail.push([tx, ty - Math.round(b.z * SY * 1.6) - 2]);
+      if (this.trail.length > 9) this.trail.shift();
+      for (let k = 0; k < this.trail.length - 1; k++) {
+        ctx.fillStyle = `rgba(255,255,255,${(0.08 + (k / this.trail.length) * 0.4).toFixed(2)})`;
+        ctx.fillRect(this.trail[k][0], this.trail[k][1], 2, 1);
+      }
+    } else if (this.trail.length) this.trail.length = 0;
     if (b.st !== 'held' && b.st !== 'dead' && b.st !== 'gone') this.drawBall(b.x, b.y, b.z);
     if (b.st === 'dead' && pl.car < 0) this.drawBall(b.x, b.y, 0.2);
 
     // Passing aids for the local quarterback.
-    if (localSide === 0 && pl.k === 'scrim' && canThrow(pl)) {
+    if (throwing) {
       if (view.showLabels) {
         [['1', I.WR1], ['2', I.WR2], ['3', I.TE], ['4', I.RB]].forEach(([n, idx]) => {
           const r = e[idx];

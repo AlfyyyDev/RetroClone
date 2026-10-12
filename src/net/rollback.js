@@ -56,6 +56,7 @@ export class RollbackSession {
     this.resyncs = 0;
     this.lastResyncAt = -1e9;
     this.wantResync = false;
+    this.floor = 0;                 // never roll back before this frame (set by a resync)
     this.rollbacks = 0;
     this.rollFrames = 0;
     this.stalled = false;
@@ -90,6 +91,7 @@ export class RollbackSession {
   // Advance by one tick. sample() returns this frame's local input.
   tick(sample) {
     // 1. Rewind and replay if a confirmed remote input contradicted our prediction.
+    if (this.rollTo >= 0 && this.rollTo < this.floor) this.rollTo = this.floor;
     if (this.rollTo >= 0 && this.rollTo < this.f) {
       const from = this.rollTo;
       this.st = this.snaps[from % BUF];
@@ -100,7 +102,7 @@ export class RollbackSession {
     }
     this.rollTo = -1;
     this.checkHashes();
-    if (this.wantResync) this.sendResync();
+    if (this.wantResync) { if (this.isHost) this.sendResync(); else if (this.desync >= 0) this.requestResync(); else this.wantResync = false; }
 
     // 2. Time sync: if we're running ahead of the peer, occasionally hold a frame.
     const localAdv = this.f - this.estRemoteFrame();
@@ -219,14 +221,15 @@ export class RollbackSession {
 
   requestResync() {
     const now = performance.now();
-    if (now - this.lastResyncAt < 1000) return;
+    if (now - this.lastResyncAt < 1000) { this.wantResync = true; return; }
+    this.wantResync = false;
     this.lastResyncAt = now;
-    if (this.tx.sendRel) this.tx.sendRel({ t: 'rs-req' });
+    if (this.tx.sendRel) this.tx.sendRel({ t: 'rs-req', epoch: this.epoch });
   }
 
   sendResync() {
     const now = performance.now();
-    if (now - this.lastResyncAt < 500 && !this.wantResync) return;
+    if (now - this.lastResyncAt < 500) { this.wantResync = true; return; } // retried from tick()
     // Newest snapshot whose inputs are all confirmed: identical on both peers if they were in sync.
     const K = Math.min(this.lastConf, this.f - 2) + 1;
     const s = this.snaps[K % BUF];
@@ -253,6 +256,9 @@ export class RollbackSession {
       this.f = K;
     }
     this.rollTo = -1;
+    // Everything before K is now settled by the host; older snapshots may hold the bad state.
+    this.floor = K;
+    for (let k = Math.max(0, this.f - BUF); k < K; k++) if (this.snaps[k % BUF] && this.snaps[k % BUF].frame === k) this.snaps[k % BUF] = null;
     for (const k of [...this.myHashes.keys()]) if (k >= K - 1) this.myHashes.delete(k);
     this.theirHashes.clear();
     this.lastHashed = Math.min(this.lastHashed, K - 2);
@@ -263,7 +269,8 @@ export class RollbackSession {
   // Reliable lobby-channel messages addressed to the session.
   handleRel(msg) {
     if (!msg || typeof msg !== 'object') return;
-    if (msg.t === 'rs-req' && this.isHost) { this.lastResyncAt = -1e9; this.sendResync(); }
+    // Ignore requests that crossed a resync already on its way to the guest.
+    if (msg.t === 'rs-req' && this.isHost && (msg.epoch | 0) >= this.epoch) { this.lastResyncAt = -1e9; this.sendResync(); }
     else if (msg.t === 'rs' && !this.isHost && Number.isInteger(msg.frame) && typeof msg.state === 'string') {
       let S;
       try { S = JSON.parse(msg.state); } catch { return; }

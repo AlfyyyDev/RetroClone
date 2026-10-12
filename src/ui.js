@@ -269,6 +269,11 @@ export class UI {
   }
 
   hintFor(st, local, touch) {
+    if (st.ph === 'RESULT' && st.res && st.t > 30) {
+      const r = st.res;
+      if (r.skip[local]) return r.skip[1 - local] ? '' : 'WAITING FOR OPPONENT...';
+      return touch ? 'TAP TO CONTINUE' : 'SPACE / CLICK TO CONTINUE';
+    }
     if (st.ph === 'KICK' && st.kick) {
       if (st.kick.tm !== local) return st.kick.ty === 'KO' || st.kick.ty === 'PUNT' ? 'GET READY TO RETURN THE KICK' : 'OPPONENT IS KICKING...';
       return '';
@@ -280,7 +285,7 @@ export class UI {
     const A = touch ? 'A' : 'SPACE', B = touch ? 'B' : 'E', MOVE = touch ? 'STICK' : 'WASD';
     if (pl.ph === 'pre') return side === 1 ? `PRE-SNAP: ${MOVE} SHIFT DEFENDER · ${B} CYCLE` : 'READ THE DEFENSE...';
     const ci = pl.ctrl[side], c = pl.e[ci];
-    if (pl.k === 'ret' && pl.car < 0) return side === 1 ? ": GET UNDER THE KICK" : ": COVER THE KICK \u00b7 : SWITCH";
+    if (pl.k === 'ret' && pl.car < 0) return side === 1 ? `${MOVE}: GET UNDER THE KICK` : `${MOVE}: COVER THE KICK \u00b7 ${B}: SWITCH`;
     if (pl.car === ci) {
       if (side === 0 && pl.k === 'scrim' && ci === I.QB && canThrow(pl)) return touch ? 'DRAG FIELD TO AIM · RELEASE TO THROW' : `CLICK/DRAG TO THROW · 1-4 QUICK THROW · ${MOVE} SCRAMBLE`;
       if (side === 0 && pl.k === 'scrim' && ci === I.QB && !pl.given && (pl.qbt === 'read' || pl.qbt === 'rpo')) return `${B}: HAND OFF · OR KEEP IT`;

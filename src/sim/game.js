@@ -350,7 +350,7 @@ function showResult(st, title, sub, tone, nx) {
   st.res = {
     title, sub, tone, nx,
     oc: pl && pl.k === 'scrim' ? pl.oc : -1, dc: pl && pl.k === 'scrim' ? pl.dc : -1,
-    adv: pl && pl.k === 'scrim' ? pl.adv : 0, off: pl ? pl.off : -1,
+    adv: pl && pl.k === 'scrim' ? pl.adv : 0, off: pl ? pl.off : -1, skip: [false, false],
   };
   // In overtime the first score ends the game.
   if (st.g.ot && st.teams[0].score !== st.teams[1].score) st.res.nx = { t: 'over' };
@@ -596,9 +596,13 @@ export function step(st, inputs) {
       if (pl.ph === 'dead' && pl.deadT >= 50) playResult(st);
       break;
     }
-    case 'RESULT':
-      if (st.t >= RESULT_T) goNext(st);
+    case 'RESULT': {
+      // Both players tapping A (or clicking) moves on early; the CPU is always ready.
+      const r = st.res;
+      for (const ti of [0, 1]) if (st.cfg.cpu[ti] || press[ti].a || press[ti].menu === 1) r.skip[ti] = true;
+      if (st.t >= RESULT_T || (st.t >= 45 && r.skip[0] && r.skip[1])) goNext(st);
       break;
+    }
     case 'PAT': stepPat(st, inp, press); break;
     case 'HALF': stepHalf(st, inp, press); break;
     case 'OVER': stepOver(st, inp, press); break;

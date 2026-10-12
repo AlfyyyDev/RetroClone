@@ -31,6 +31,7 @@ directly over WebRTC.
 - 4 quarters with a running game clock. After a tackle in bounds, up to 25s of runoff ticks away in real time during the huddle, so calling your play fast saves clock.
 - **Timeouts:** 2 per team per half (1 in overtime), called during play selection with **T** or the button. A timeout stops the running clock.
 - A halftime team perk pick (roguelite boons), sudden-death overtime and rematches.
+- **Feel.** Screen shake and dust on hits, touchdown confetti, ball trails, and callouts (JUKE!, SACK!, PICKED!, SWATTED!). Both players can tap to skip the result screen. Phones vibrate on big hits.
 - **Play anywhere.** Keyboard, mouse, touch (virtual stick plus A/B buttons) and gamepad. Phones work in landscape.
 - Synthesized chiptune sound effects. There are no asset files except the pixel font.
 
@@ -99,6 +100,7 @@ If you have one, add this before the game script in `index.html`:
 | Pick a card / draft / perk | click, or 1-6 | tap | |
 | Punt / field goal on 4th down | P / F | tap | |
 | Timeout (during play selection) | T | tap TIMEOUT | |
+| Skip the result screen (both players) | Space / Enter / click | tap | A |
 
 ## Development
 
