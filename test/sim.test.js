@@ -77,3 +77,18 @@ test('after a human throw the QB keeps control; A takes over the receiver mid-ai
   while (pl.b.st === 'air') { near = Math.hypot(r.x - pl.b.tx, r.y - pl.b.ty); stepPlay(st, pl, [idle, idle], [none, none], [false, true]); }
   assert.ok(near < 3, `receiver ended ${near.toFixed(1)} yds from the ball`);
 });
+test('receivers work back to a ball thrown at where they are (no lead)', () => {
+  const st = createGame({ seed: 4, cpu: [true, true], teams: TEAMS });
+  while (st.ph === 'DRAFT') step(st, [null, null]);
+  const idle = { mx: 0, my: 0 }, none = { a: false, b: false, rel: false, menu: 0 };
+  for (const [play, who, at] of [['slantflat', 'WR1', 30], ['curl', 'WR2', 50], ['mesh', 'WR1', 45], ['verts', 'TE', 60], ['smash', 'TE', 55]]) {
+    const pl = setupScrim(st, 0, 1, 35, OFF_BY_ID[play], DEF_BY_ID.c3);
+    while (pl.ph === 'pre' || pl.t < at) stepPlay(st, pl, [idle, idle], [none, none], [false, true]);
+    const r = pl.e[I[who]];
+    stepPlay(st, pl, [idle, idle], [{ ...none, rel: true, ax: r.x, ay: r.y }, none], [false, true]);
+    const q = pl.e[pl.b.to];
+    let d = 99;
+    while (pl.b.st === 'air') { d = Math.hypot(q.x - pl.b.tx, q.y - pl.b.ty); stepPlay(st, pl, [idle, idle], [none, none], [false, true]); }
+    assert.ok(d < 1.0, `${play}: ${who} finished ${d.toFixed(2)} yds from the ball (catch radius 1.35)`);
+  }
+});

@@ -20,7 +20,7 @@ function mkEnt(s, r, tm, p, x, y, big) {
   return {
     s, r, tm, num: p.num, x, y, vx: 0, vy: 0, dvx: 0, dvy: 0, fx: s === 0 ? 1 : -1,
     spd: spdOf(p.spd, big), sr: p.spd, str: p.str, hnd: p.hnd, tkl: p.tkl, cov: p.cov, arm: p.arm, acc: p.acc,
-    jkB: p.jk | 0, rte: p.rte | 0, ff: p.ff | 0, pu: 0, drv: 0, key: 0, tg: -1,
+    jkB: p.jk | 0, rte: p.rte | 0, ff: p.ff | 0, pu: 0, drv: 0, key: 0, tg: -1, trk: 0,
     st: 0, stT: 0, eng: -1, ecd: 0, tcd: 0, jk: 0, jcd: 0, rcd: 0, slow: 0, jam: 0,
     a: null, rp: null, ri: 0, re: 's', ux: 1, uy: 0, pvx: 0, pvy: 0, rd: 10, blk: 0, sx: x, sy: y, anim: 0,
   };
@@ -563,6 +563,7 @@ function think(st, pl, i, cpu) {
   p.blk = 0;
   p.drv = 0;
   p.pu = 0;
+  p.trk = 0;
   if (p.st === 2) { p.dvx = 0; p.dvy = 0; return; }
   const car = pl.car >= 0 ? e[pl.car] : null;
   const advK = pl.adv < 0 ? 1.35 : pl.adv > 0 ? 0.75 : 1;
@@ -587,7 +588,8 @@ function think(st, pl, i, cpu) {
       if (b.st !== 'air') { moveTo(p, b.tx, b.ty, 1); return; } // pitches and kicks: go get it
       // Passes: after a brief read the receiver bends toward the landing spot, pacing himself to
       // arrive with the ball (keeps momentum instead of waiting for the defender to close).
-      if (b.f >= 9) {
+      if (b.f >= 3) {
+        p.trk = 1; // plant and redirect sharply while working back to the ball
         const d = len(b.tx - p.x, b.ty - p.y);
         const need = d / Math.max(rem, DT);
         moveTo(p, b.tx, b.ty, clamp((need * 1.1) / p.spd, 0.6, 1), d > 0.8);
@@ -846,7 +848,7 @@ function integrate(pl) {
     let dvx = p.dvx * mul, dvy = p.dvy * mul;
     let ax = dvx - p.vx, ay = dvy - p.vy;
     const al = len(ax, ay);
-    const lim = p.jk > 0 ? maxA * 2.2 : maxA;
+    const lim = p.jk > 0 ? maxA * 2.2 : p.trk ? maxA * 2 : maxA;
     if (al > lim) { ax *= lim / al; ay *= lim / al; }
     p.vx += ax; p.vy += ay;
     p.x += p.vx * DT; p.y += p.vy * DT;
