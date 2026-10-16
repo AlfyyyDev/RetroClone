@@ -292,7 +292,7 @@ export class UI {
       if (side === 0 && pl.k === 'scrim' && ci === I.QB && !pl.given && pl.qbt === 'speed') return `${B}: PITCH · ${A}: JUKE`;
       return `${MOVE}: RUN · ${A}: JUKE`;
     }
-    if (pl.b.st === 'air' && pl.b.to === ci) return 'GET UNDER THE BALL!';
+    if (pl.b.st === 'air' && side === 0 && pl.b.to >= 0) return pl.b.to === ci ? 'GET UNDER THE BALL!' : `${A}: CONTROL THE RECEIVER`;
     if (c && c.st === 1) return `${A}: RIP OFF THE BLOCK · ${B}: SWITCH`;
     const carSide = pl.car >= 0 ? pl.e[pl.car].s : -1;
     if (carSide >= 0 && carSide !== side) return `${MOVE}: CHASE · ${A}: DIVE · ${B}: SWITCH`;

@@ -20,7 +20,7 @@ function mkEnt(s, r, tm, p, x, y, big) {
   return {
     s, r, tm, num: p.num, x, y, vx: 0, vy: 0, dvx: 0, dvy: 0, fx: s === 0 ? 1 : -1,
     spd: spdOf(p.spd, big), sr: p.spd, str: p.str, hnd: p.hnd, tkl: p.tkl, cov: p.cov, arm: p.arm, acc: p.acc,
-    jkB: p.jk | 0, rte: p.rte | 0, ff: p.ff | 0, pu: 0, drv: 0, key: 0,
+    jkB: p.jk | 0, rte: p.rte | 0, ff: p.ff | 0, pu: 0, drv: 0, key: 0, tg: -1,
     st: 0, stT: 0, eng: -1, ecd: 0, tcd: 0, jk: 0, jcd: 0, rcd: 0, slow: 0, jam: 0,
     a: null, rp: null, ri: 0, re: 's', ux: 1, uy: 0, pvx: 0, pvy: 0, rd: 10, blk: 0, sx: x, sy: y, anim: 0,
   };
@@ -146,7 +146,7 @@ export function setupReturn(st, kickT, recvT, kickX, landX, landY, flightF, isPu
   e.push(mkEnt(0, 'K', kickT, K.K, kickX - (isPunt ? 0 : 3), MID, false));
   for (let i = 0; i < 7; i++) {
     const ent = mkEnt(0, 'COV', kickT, cov[i], startX, 5 + i * ((FIELD_W - 10) / 6), false);
-    ent.a = { t: 'cover' };
+    ent.a = { t: 'cover', safe: i === 3 ? 1 : 0 }; // the middle man trails as a safety
     ent.rd = 0;
     e.push(ent);
   }
@@ -159,7 +159,8 @@ export function setupReturn(st, kickT, recvT, kickX, landX, landY, flightF, isPu
   e.push(rent);
   const blk = [R.TE, R.LB, R.LB2, R.CB2, R.S, ret === R.WR1 ? R.WR2 : R.WR1, R.CB];
   for (let i = 0; i < 7; i++) {
-    const bx = isPunt ? kickX + 13 + (i % 2) * 7 : Math.min(landX, 100) - 16 - (i % 3) * 4;
+    // Punts: the return team has already peeled back from the line to build a wall.
+    const bx = isPunt ? kickX + 20 + (i % 2) * 5 : Math.min(landX, 100) - 16 - (i % 3) * 4;
     const ent = mkEnt(1, 'BLK', recvT, blk[i], bx, 6 + i * ((FIELD_W - 12) / 6), false);
     ent.a = { t: 'wall' };
     ent.blk = 1;
@@ -274,7 +275,6 @@ function throwBall(st, pl, tx, ty) {
   pl.thrown = true;
   pl.throwT = pl.t;
   pl.tgt = tgt;
-  if (tgt >= 0) { pl.ctrl[0] = tgt; pl.touch[0] = false; }
   st.stats[pl.off].att++;
   st.ev.push({ k: 'throw' });
 }
@@ -473,16 +473,26 @@ function escort(pl, p, cx, cy, range) {
   p.drv = 1;
   let best = -1, bs = 1e9;
   const e = pl.e;
+  const fwd = p.s === 0 ? 1 : -1; // direction the carrier is heading
   for (let i = 0; i < e.length; i++) {
     const o = e[i];
     if (o.s === p.s || o.st === 2 || o.eng >= 0 || i === pl.car) continue;
+    if ((o.x - cx) * fwd < -2) continue; // already behind the play
     const dc = len(o.x - cx, o.y - cy);
     if (dc > range) continue;
-    const s = dist(p, o) + dc * 0.6;
+    let s = dist(p, o) + dc * 0.6;
+    // Spread out: avoid a defender a teammate is already going after.
+    for (const q of e) if (q !== p && q.s === p.s && q.tg === i) { s += 6; break; }
     if (s < bs) { bs = s; best = i; }
   }
   p.blk = 1;
-  if (best < 0) { moveTo(p, cx + (p.s === 0 ? 3 : -3), cy, 0.6); return; }
+  p.tg = best;
+  if (best < 0) {
+    // Nobody to block yet: hold ground ahead of the carrier instead of drifting back to him.
+    const ax = fwd > 0 ? Math.max(p.x, cx + 4) : Math.min(p.x, cx - 4);
+    moveTo(p, ax, p.y + (cy - p.y) * 0.25, 0.5);
+    return;
+  }
   const o = e[best];
   const dx = cx - o.x, dy = cy - o.y, d = len(dx, dy) || 1;
   moveTo(p, o.x + (dx / d) * 0.8, o.y + (dy / d) * 0.8, 1);
@@ -573,15 +583,24 @@ function think(st, pl, i, cpu) {
   // Ball in flight: intended target goes to it, nearby defenders break on it.
   if (b.st === 'air' || b.st === 'pitch' || b.st === 'kick') {
     const rem = (b.F - b.f) * DT;
-    if (i === b.to) { moveTo(p, b.tx, b.ty, 1); return; }
+    if (i === b.to) {
+      // Pitches and kicks: go get it. Passes: the receiver stays on his route (unless a human takes over)
+      // and only reaches for the ball in the last moment if it is thrown close to him.
+      const late = b.F - b.f <= 14 && len(b.tx - p.x, b.ty - p.y) < 3;
+      if (b.st !== 'air' || late || cpu[p.s]) { moveTo(p, b.tx, b.ty, 1); return; }
+    }
     if (b.st === 'air' && p.s === 1 && t - pl.throwT >= p.rd * 0.6) {
       const d = len(b.tx - p.x, b.ty - p.y);
       if (d <= p.spd * rem + 2.5) { moveTo(p, b.tx, b.ty, 1); return; }
     }
     if (b.st === 'kick' && pl.k === 'ret') {
-      if (p.s === 0) moveTo(p, b.tx - 4 + (p.sy - MID) * 0.02, lerpY(p.sy, b.ty, 0.45), 0.9);
+      // Coverage sprints in lanes; the kicker and one safety stay deep as the last line.
+      if (p.s === 0) {
+        if (p.r === 'K' || (p.a && p.a.safe)) moveTo(p, Math.min(b.tx, 100) - (p.r === 'K' ? 30 : 20), lerpY(p.sy, b.ty, 0.3), 0.8);
+        else moveTo(p, b.tx - 4 + (p.sy - MID) * 0.02, lerpY(p.sy, b.ty, 0.45), 0.9);
+      }
       else if (p.a.t === 'ret') moveTo(p, b.tx, b.ty, 1);
-      else moveTo(p, Math.min(b.tx, 100) - 12, p.sy, 0.6);
+      else moveTo(p, Math.min(b.tx, 100) - (pl.punt ? 9 : 12), p.sy, pl.punt ? 1 : 0.6);
       return;
     }
   }
@@ -590,7 +609,7 @@ function think(st, pl, i, cpu) {
   if (car && (pl.pm || pl.k === 'ret')) {
     if (p.s === car.s) {
       if (pl.k === 'scrim' && p.a.t === 'pblock' && !p.a.scr && t - pl.pmT < 30) { olAI(pl, p, i); return; }
-      escort(pl, p, car.x, car.y, 12); return;
+      escort(pl, p, car.x, car.y, pl.k === 'ret' ? 35 : 12); return;
     }
     if (t >= pl.pmT + p.rd) { pursue(pl, p, car); return; }
   }
@@ -712,7 +731,11 @@ function humanControl(st, pl, s, inp, pressA, pressB) {
     }
   }
   if (pressA) {
-    if (pl.car === ci) {
+    if (s === 0 && pl.b.st === 'air' && pl.b.to >= 0 && ci !== pl.b.to) {
+      // Take over the intended receiver while the pass is in the air.
+      pl.ctrl[0] = pl.b.to; pl.touch[0] = false;
+      st.ev.push({ k: 'switch' });
+    } else if (pl.car === ci) {
       if (p.jcd === 0) { p.jk = p.jkB ? 24 : 18; p.jcd = p.jkB ? 55 : 75; st.ev.push({ k: 'juke', x: p.x, y: p.y }); }
     } else if (p.st === 1) {
       if (p.rcd === 0) { p.rcd = 40; if (rand(st) < 0.3 + (p.str - e[p.eng].str) * 0.006) shed(pl, p, e[p.eng]); }
@@ -785,7 +808,8 @@ function engagements(st, pl) {
     bl.vx = d.vx; bl.vy = d.vy;
     const near = pl.car >= 0 && e[pl.car].s !== d.s && dist(d, e[pl.car]) < 1.6;
     const p = (bl.drv ? 0.0055 : 0.0085) * clamp(1 + (d.str - bl.str) / 25, 0.3, 2.6) * (pl.k === 'scrim' && d.s === 1 ? advMul : 1) + (near ? (bl.drv ? 0.018 : 0.05) : 0);
-    if (rand(st) < p) shed(pl, d, bl);
+    // Open-field blocks on returns don't last long.
+    if (rand(st) < (pl.k === 'ret' ? p * 3.5 : p)) shed(pl, d, bl);
   }
 }
 
@@ -808,7 +832,7 @@ function integrate(pl) {
     }
     if (p.st === 2) { p.vx *= 0.8; p.vy *= 0.8; p.x += p.vx * DT; p.y += p.vy * DT; continue; }
     let mul = 1;
-    if (i === pl.car) mul *= p.s === 0 && i === I.QB && !pl.pm ? 1 : p.r === 'RB' ? 0.96 : 0.9;
+    if (i === pl.car) mul *= p.s === 0 && i === I.QB && !pl.pm ? 1 : p.r === 'RB' ? 0.96 : p.r === 'KR' ? 0.94 : 0.9;
     if (p.st === 3) mul *= 0.35;
     if (p.slow > 0) { p.slow--; mul *= 0.6; }
     if (p.jk > 0) { p.jk--; mul *= 1.12; }

@@ -96,6 +96,7 @@ If you have one, add this before the game script in `index.html`:
 | Throw | click or drag on the field, then release | drag on the field, then release | quick throw buttons |
 | Quick throw to receiver 1-4 (auto lead) | 1 2 3 4 | tap where you want the ball | X / Y / LB / RB |
 | Juke (ball carrier) / dive or rip (defender) / kick meter | Space | A | A |
+| Take over the receiver while a pass is in the air (otherwise he runs his route) | Space | A | A |
 | Give / pitch on options; switch defender | E or Shift | B | B |
 | Pick a card / draft / perk | click, or 1-6 | tap | |
 | Punt / field goal on 4th down | P / F | tap | |
@@ -108,6 +109,7 @@ If you have one, add this before the game script in `index.html`:
 npm test                         # determinism, full CPU games, rollback sync under lag/loss, desync recovery
 node test/balance.mjs 40         # matchup grid + per-card stats (CPU vs CPU)
 node test/trace.mjs iz c3        # frame-by-frame trace of one play (offense id, defense id)
+node test/returns.mjs 300        # kickoff / punt return averages
 node build.mjs && node test/browser.mjs shots         # headless Chrome playthrough with screenshots
 node build.mjs && node test/p2p.mjs shots-p2p 60      # two browsers over the REAL relays
 LAG="lag=60&jitter=30&loss=8" node test/p2p.mjs shots-p2p 60
