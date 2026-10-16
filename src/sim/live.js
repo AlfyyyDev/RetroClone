@@ -584,10 +584,15 @@ function think(st, pl, i, cpu) {
   if (b.st === 'air' || b.st === 'pitch' || b.st === 'kick') {
     const rem = (b.F - b.f) * DT;
     if (i === b.to) {
-      // Pitches and kicks: go get it. Passes: the receiver stays on his route (unless a human takes over)
-      // and only reaches for the ball in the last moment if it is thrown close to him.
-      const late = b.F - b.f <= 14 && len(b.tx - p.x, b.ty - p.y) < 3;
-      if (b.st !== 'air' || late || cpu[p.s]) { moveTo(p, b.tx, b.ty, 1); return; }
+      if (b.st !== 'air') { moveTo(p, b.tx, b.ty, 1); return; } // pitches and kicks: go get it
+      // Passes: after a brief read the receiver bends toward the landing spot, pacing himself to
+      // arrive with the ball (keeps momentum instead of waiting for the defender to close).
+      if (b.f >= 9) {
+        const d = len(b.tx - p.x, b.ty - p.y);
+        const need = d / Math.max(rem, DT);
+        moveTo(p, b.tx, b.ty, clamp((need * 1.1) / p.spd, 0.6, 1), d > 0.8);
+        return;
+      }
     }
     if (b.st === 'air' && p.s === 1 && t - pl.throwT >= p.rd * 0.6) {
       const d = len(b.tx - p.x, b.ty - p.y);

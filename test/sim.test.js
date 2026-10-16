@@ -64,10 +64,16 @@ test('after a human throw the QB keeps control; A takes over the receiver mid-ai
   stepPlay(st, pl, [idle, idle], [{ ...none, rel: true, ax: wr.x + 12, ay: wr.y }, none], [false, true]);
   assert.equal(pl.b.st, 'air');
   assert.equal(pl.ctrl[0], I.QB, 'control should stay on the QB after the throw');
-  // Receiver keeps running his route (straight downfield on a go route), not toward the ball yet.
+  // Right after the throw he is still running his route; he bends toward the ball once he reads it.
   const before = pl.e[pl.b.to].vx;
   stepPlay(st, pl, [idle, idle], [none, none], [false, true]);
   assert.ok(before > 3, 'receiver should still be running his route');
   stepPlay(st, pl, [idle, idle], [{ ...none, a: true }, none], [false, true]);
   assert.equal(pl.ctrl[0], pl.b.to, 'pressing A should hand control to the intended receiver');
+  // Hand control back to the AI and let the ball fly: the receiver should finish near the landing spot.
+  pl.ctrl[0] = I.QB;
+  const r = pl.e[pl.b.to];
+  let near = 99;
+  while (pl.b.st === 'air') { near = Math.hypot(r.x - pl.b.tx, r.y - pl.b.ty); stepPlay(st, pl, [idle, idle], [none, none], [false, true]); }
+  assert.ok(near < 3, `receiver ended ${near.toFixed(1)} yds from the ball`);
 });
